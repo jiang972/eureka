@@ -125,6 +125,12 @@ public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry impl
             "ReplicaAwareInstanceRegistry - RenewalThresholdUpdater", true);
 
     @Inject
+    //大概是创建了一个注册表，其他服务注册过来的时候，写进去
+    /**1.这个eureka启动的时候会尝试从其他的eureka-server获取注册表信息，如果抓取失败
+     * 那么就不会让其他服务实例来自己这里进行服务发现，获取自己注册表的信息
+     * 2.自我保护机制，如果在一段时间内，发送心跳的client少于一定比例，就认为自己故障了，就不会移除掉未发送心跳的client
+     * 而是进入到保护状态
+     */
     public PeerAwareInstanceRegistryImpl(
             EurekaServerConfig serverConfig,
             EurekaClientConfig clientConfig,

@@ -30,6 +30,7 @@ import javax.inject.Singleton;
 @ProvidedBy(MyDataCenterInstanceConfigProvider.class)
 public class MyDataCenterInstanceConfig extends PropertiesInstanceConfig implements EurekaInstanceConfig {
 
+    //Java的特性，他会调用父类的构造方法，而PropertiesInstanceConfig的构造会初始化实际配置
     public MyDataCenterInstanceConfig() {
     }
 
