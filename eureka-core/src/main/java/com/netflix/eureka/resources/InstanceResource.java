@@ -102,6 +102,7 @@ public class InstanceResource {
      * @return response indicating whether the operation was a success or
      *         failure.
      */
+    //终于到了，这块是put，是接受心跳的具体方法逻辑
     @PUT
     public Response renewLease(
             @HeaderParam(PeerEurekaNode.HEADER_REPLICATION) String isReplication,
@@ -109,6 +110,7 @@ public class InstanceResource {
             @QueryParam("status") String status,
             @QueryParam("lastDirtyTimestamp") String lastDirtyTimestamp) {
         boolean isFromReplicaNode = "true".equals(isReplication);
+        //这块进行续约的
         boolean isSuccess = registry.renew(app.getName(), id, isFromReplicaNode);
 
         // Not found in the registry, immediately ask for a register
@@ -276,6 +278,7 @@ public class InstanceResource {
      * @return response indicating whether the operation was a success or
      *         failure.
      */
+    //服务下线
     @DELETE
     public Response cancelLease(
             @HeaderParam(PeerEurekaNode.HEADER_REPLICATION) String isReplication) {

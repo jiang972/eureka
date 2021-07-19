@@ -85,11 +85,13 @@ public class PeerEurekaNodes {
                 }
         );
         try {
+            //解析配置文件中其他server的url地址
             updatePeerEurekaNodes(resolvePeerUrls());
             Runnable peersUpdateTask = new Runnable() {
                 @Override
                 public void run() {
                     try {
+                        //通过配置文件的url来更新eureke server列表
                         updatePeerEurekaNodes(resolvePeerUrls());
                     } catch (Throwable e) {
                         logger.error("Cannot update the replica Nodes", e);
@@ -99,6 +101,7 @@ public class PeerEurekaNodes {
             };
             taskExecutor.scheduleWithFixedDelay(
                     peersUpdateTask,
+                    //默认10分钟执行一次
                     serverConfig.getPeerEurekaNodesUpdateIntervalMs(),
                     serverConfig.getPeerEurekaNodesUpdateIntervalMs(),
                     TimeUnit.MILLISECONDS
@@ -157,6 +160,7 @@ public class PeerEurekaNodes {
             return;
         }
 
+
         Set<String> toShutdown = new HashSet<>(peerEurekaNodeUrls);
         toShutdown.removeAll(newPeerUrls);
         Set<String> toAdd = new HashSet<>(newPeerUrls);
@@ -165,7 +169,7 @@ public class PeerEurekaNodes {
         if (toShutdown.isEmpty() && toAdd.isEmpty()) { // No change
             return;
         }
-
+        //通过解析的集群其他server的url构造对象PeerEurekaNode
         // Remove peers no long available
         List<PeerEurekaNode> newNodeList = new ArrayList<>(peerEurekaNodes);
 

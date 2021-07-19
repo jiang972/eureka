@@ -60,6 +60,7 @@ public class Lease<T> {
      * {@link #DEFAULT_DURATION_IN_SECS}.
      */
     public void renew() {
+        //这块是有bug的，其实只需要保存当前时间，却愣是又加了duration（90s）
         lastUpdateTimestamp = System.currentTimeMillis() + duration;
 
     }
@@ -69,6 +70,7 @@ public class Lease<T> {
      */
     public void cancel() {
         if (evictionTimestamp <= 0) {
+            //保存一个服务下线的时间戳
             evictionTimestamp = System.currentTimeMillis();
         }
     }
@@ -108,6 +110,15 @@ public class Lease<T> {
      * @param additionalLeaseMs any additional lease time to add to the lease evaluation in ms.
      */
     public boolean isExpired(long additionalLeaseMs) {
+        /**
+         * duration = 90s
+         * additionalLeaseMs 补偿时间
+         * 系统当前时间  大于  最后心跳时间 + 90s + 补偿时间
+         * 假设，clientA在 18：20：30 发来心跳，存储的时间是18：20：30 + 90s = 18：22：00
+         * 然后clientA立刻宕机了，server在18：22：00检测，本来应该是下线的嘛，但是你上次记录的时间就是18：22：00
+         * 这就导致server不会把他下线，直到18：23：30才会。也就是过去了90 * 2 = 180s的时间
+         * 这是个bug，固定就是 超过 配置的duration（90，也可以是其他的） 的双倍时间才会下线
+         */
         return (evictionTimestamp > 0 || System.currentTimeMillis() > (lastUpdateTimestamp + duration + additionalLeaseMs));
     }
 

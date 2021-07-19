@@ -27,6 +27,7 @@ import org.slf4j.LoggerFactory;
  *
  * @author Karthik Ranganathan,Greg Kim
  */
+//奇怪的新类出现了，是存放上一分钟实际心跳的类
 public class MeasuredRate {
     private static final Logger logger = LoggerFactory.getLogger(MeasuredRate.class);
     private final AtomicLong lastBucket = new AtomicLong(0);
@@ -49,7 +50,8 @@ public class MeasuredRate {
     public synchronized void start() {
         if (!isActive) {
             timer.schedule(new TimerTask() {
-
+                //每60s调一次，把lastBucket置为currentBucket，同时他也是《上一分钟的心跳次数》
+                //并且把currentBucket置为0，让他重新计算
                 @Override
                 public void run() {
                     try {

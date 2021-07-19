@@ -156,6 +156,7 @@ public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry impl
         this.numberOfReplicationsLastMin.start();
         this.peerEurekaNodes = peerEurekaNodes;
         initializedResponseCache();
+        //开启一个定时任务
         scheduleRenewalThresholdUpdateTask();
         initRemoteRegionRegistry();
 
@@ -195,11 +196,13 @@ public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry impl
      */
     private void scheduleRenewalThresholdUpdateTask() {
         timer.schedule(new TimerTask() {
+            //默认15分钟跑一次
                            @Override
                            public void run() {
                                updateRenewalThreshold();
                            }
                        }, serverConfig.getRenewalThresholdUpdateIntervalMs(),
+                //这块就是15分钟
                 serverConfig.getRenewalThresholdUpdateIntervalMs());
     }
 
@@ -213,15 +216,20 @@ public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry impl
         // Copy entire entry from neighboring DS node
         int count = 0;
 
+        //默认serverConfig.getRegistrySyncRetries() = 5
         for (int i = 0; ((i < serverConfig.getRegistrySyncRetries()) && (count == 0)); i++) {
             if (i > 0) {
                 try {
+                    //如果本机client还没有注册表，就说明client还没没能从其他节点拉取注册表，就等30s再重试
                     Thread.sleep(serverConfig.getRegistrySyncRetryWaitMs());
                 } catch (InterruptedException e) {
                     logger.warn("Interrupted during registry transfer..");
                     break;
                 }
             }
+            //从别的节点拉取注册信息，自己机器没有的话就在自己这里注册
+            //说是这么说，其实这个方法并没有去别的节点拉，而是从本机拿的
+            //因为这个server本身就是个client嘛，所以他本来也应该存储着注册表，所以她就直接从自己本机拿注册表了
             Applications apps = eurekaClient.getApplications();
             for (Application app : apps.getRegisteredApplications()) {
                 for (InstanceInfo instance : app.getInstances()) {
@@ -242,7 +250,12 @@ public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry impl
     @Override
     public void openForTraffic(ApplicationInfoManager applicationInfoManager, int count) {
         // Renewals happen every 30 seconds and for a minute it should be a factor of 2.
+        //这块写的很垃圾，count * 2的意思就是，假设有10个服务实例，30s发一次心跳，那一分钟就应该是20次
+        //这也太拉垮了，这30s是个配置项啊，我配置成10s了不就废了
+        //应该的写法： count * （60 / 心跳间隔（这里就是默认的30s，我也可以配置成10s））
+        // 当然这也是简化的，毕竟60不一定除的开，也可能大于60
         this.expectedNumberOfRenewsPerMin = count * 2;
+        //这就是乘上0.85
         this.numberOfRenewsPerMinThreshold =
                 (int) (this.expectedNumberOfRenewsPerMin * serverConfig.getRenewalPercentThreshold());
         logger.info("Got " + count + " instances from neighboring DS node");
@@ -253,12 +266,14 @@ public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry impl
         }
         DataCenterInfo.Name selfName = applicationInfoManager.getInfo().getDataCenterInfo().getName();
         boolean isAws = Name.Amazon == selfName;
+        //又是AWS，不要管
         if (isAws && serverConfig.shouldPrimeAwsReplicaConnections()) {
             logger.info("Priming AWS connections for all replicas..");
             primeAwsReplicas(applicationInfoManager);
         }
         logger.info("Changing status to UP");
         applicationInfoManager.setInstanceStatus(InstanceStatus.UP);
+        //检测故障的就这一行
         super.postInit();
     }
 
@@ -378,15 +393,19 @@ public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry impl
      * @see com.netflix.eureka.registry.InstanceRegistry#cancel(java.lang.String,
      * java.lang.String, long, boolean)
      */
+    //服务下线
     @Override
     public boolean cancel(final String appName, final String id,
                           final boolean isReplication) {
+        //核心下线逻辑
         if (super.cancel(appName, id, isReplication)) {
             replicateToPeers(Action.Cancel, appName, id, null, null, isReplication);
             synchronized (lock) {
                 if (this.expectedNumberOfRenewsPerMin > 0) {
                     // Since the client wants to cancel it, reduce the threshold (1 for 30 seconds, 2 for a minute)
+                    //看，这块简直了，垃圾，下线就-2.。。。
                     this.expectedNumberOfRenewsPerMin = this.expectedNumberOfRenewsPerMin - 2;
+                    //重新乘一遍0.85
                     this.numberOfRenewsPerMinThreshold =
                             (int) (this.expectedNumberOfRenewsPerMin * serverConfig.getRenewalPercentThreshold());
                 }
@@ -409,11 +428,14 @@ public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry impl
      */
     @Override
     public void register(final InstanceInfo info, final boolean isReplication) {
+        //leaseDuration = 90s
         int leaseDuration = Lease.DEFAULT_DURATION_IN_SECS;
         if (info.getLeaseInfo() != null && info.getLeaseInfo().getDurationInSecs() > 0) {
             leaseDuration = info.getLeaseInfo().getDurationInSecs();
         }
+        //先调用父类的注册方法
         super.register(info, leaseDuration, isReplication);
+        //当有节点向自己注册，完成之后，本机会跟集群的其他节点进行同步，其实就是注册
         replicateToPeers(Action.Register, info.getAppName(), info.getId(), info, null, isReplication);
     }
 
@@ -484,10 +506,14 @@ public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry impl
 
     @Override
     public boolean isLeaseExpirationEnabled() {
+        //是否开启了默认保护机制，没有开启直接返回true
         if (!isSelfPreservationModeEnabled()) {
             // The self preservation mode is disabled, hence allowing the instances to expire.
             return true;
         }
+        //numberOfRenewsPerMinThreshold 期望一分钟有多少心跳发过来
+        //getNumOfRenewsInLastMin 上一分钟有多少服务实例发过来心跳
+        //如果  上一分钟发过来心跳的服务实例数量 大于 一分钟有多少心跳发过来的期望值 ，就返回true
         return numberOfRenewsPerMinThreshold > 0 && getNumOfRenewsInLastMin() > numberOfRenewsPerMinThreshold;
     }
 
@@ -526,6 +552,8 @@ public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry impl
      */
     private void updateRenewalThreshold() {
         try {
+            //把自己作为client，从其他server拉取注册表，合并到自己的本地去
+            //将从其他server拉取到的服务实例的数量，作为count
             Applications apps = eurekaClient.getApplications();
             int count = 0;
             for (Application app : apps.getRegisteredApplications()) {
@@ -540,6 +568,7 @@ public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry impl
                 // current expected threshold of if the self preservation is disabled.
                 if ((count * 2) > (serverConfig.getRenewalPercentThreshold() * numberOfRenewsPerMinThreshold)
                         || (!this.isSelfPreservationModeEnabled())) {
+                    //垃圾，还是 *2 ，如果和其他server的注册表不一致，就会重新计算期望心跳值
                     this.expectedNumberOfRenewsPerMin = count * 2;
                     this.numberOfRenewsPerMinThreshold = (int) ((count * 2) * serverConfig.getRenewalPercentThreshold());
                 }
@@ -630,10 +659,12 @@ public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry impl
                 numberOfReplicationsLastMin.increment();
             }
             // If it is a replication already, do not replicate again as this will create a poison replication
+            //这个isReplication，如果是同步来的就是true，不能让本来就是被同步的，还要再向其他节点同步
             if (peerEurekaNodes == Collections.EMPTY_LIST || isReplication) {
                 return;
             }
-
+            //peerEurekaNodes就是全部的eureka server
+            //拿到全部的server，然后排除掉自己
             for (final PeerEurekaNode node : peerEurekaNodes.getPeerEurekaNodes()) {
                 // If the url represents this host, do not replicate to yourself.
                 if (peerEurekaNodes.isThisMyUrl(node.getServiceUrl())) {
@@ -657,6 +688,7 @@ public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry impl
         try {
             InstanceInfo infoFromRegistry = null;
             CurrentRequestVersion.set(Version.V2);
+            //看下面都是些啥，Cancel下线，Heartbeat心跳，Register注册等等，都会通知集群其他的节点
             switch (action) {
                 case Cancel:
                     node.cancel(appName, id);
@@ -667,6 +699,7 @@ public class PeerAwareInstanceRegistryImpl extends AbstractInstanceRegistry impl
                     node.heartbeat(appName, id, infoFromRegistry, overriddenStatus, false);
                     break;
                 case Register:
+                    //同步其实也是注册
                     node.register(info);
                     break;
                 case StatusUpdate:

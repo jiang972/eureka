@@ -86,6 +86,8 @@ public class ApplicationsResource {
      *            application.
      * @return information about a particular application.
      */
+    //接受心跳的入口，因为心跳的链接是类似http://localhost:8080/v2/apps/{appId}/{id} ，put请求
+    //而这里只是到了appId，所以里面还需要有个id才行，，还得找到对应的put请求，这个jersey框架真的奇葩
     @Path("{appId}")
     public ApplicationResource getApplicationResource(
             @PathParam("version") String version,
@@ -110,6 +112,7 @@ public class ApplicationsResource {
      *         from the {@link AbstractInstanceRegistry}.
      */
     @GET
+    //server获取全量注册表
     public Response getContainers(@PathParam("version") String version,
                                   @HeaderParam(HEADER_ACCEPT) String acceptHeader,
                                   @HeaderParam(HEADER_ACCEPT_ENCODING) String acceptEncoding,
@@ -119,6 +122,7 @@ public class ApplicationsResource {
 
         boolean isRemoteRegionRequested = null != regionsStr && !regionsStr.isEmpty();
         String[] regions = null;
+        //EurekaMonitors是计数用的
         if (!isRemoteRegionRequested) {
             EurekaMonitors.GET_ALL.increment();
         } else {
@@ -153,6 +157,7 @@ public class ApplicationsResource {
                     .header(HEADER_CONTENT_TYPE, returnMediaType)
                     .build();
         } else {
+            //核心就这一块responseCache.get(cacheKey)
             response = Response.ok(responseCache.get(cacheKey))
                     .build();
         }

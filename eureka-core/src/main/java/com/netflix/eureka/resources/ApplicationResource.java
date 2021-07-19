@@ -124,6 +124,7 @@ public class ApplicationResource {
      *            the unique identifier of the instance.
      * @return information about a particular instance.
      */
+    //接受心跳，这块是id，还差个put
     @Path("{id}")
     public InstanceResource getInstanceInfo(@PathParam("id") String id) {
         return new InstanceResource(this, id, serverConfig, registry);
@@ -145,6 +146,7 @@ public class ApplicationResource {
                                 @HeaderParam(PeerEurekaNode.HEADER_REPLICATION) String isReplication) {
         logger.debug("Registering instance {} (replication={})", info.getId(), isReplication);
         // validate that the instanceinfo contains all the necessary required fields
+        //一堆check，是防御式编程，不过这块应该抽取出来，不然可读性差
         if (isBlank(info.getId())) {
             return Response.status(400).entity("Missing instanceId").build();
         } else if (isBlank(info.getHostName())) {
@@ -162,6 +164,7 @@ public class ApplicationResource {
         }
 
         // handle cases where clients may be registering with bad DataCenterInfo with missing data
+        //总是想判断是不是AWS云服务，很烦，关于datacenter的创建应该是工厂模式+策略模式，工厂内部按照配置的策略生成具体的实现
         DataCenterInfo dataCenterInfo = info.getDataCenterInfo();
         if (dataCenterInfo instanceof UniqueIdentifier) {
             String dataCenterInfoId = ((UniqueIdentifier) dataCenterInfo).getId();

@@ -50,6 +50,7 @@ public class Jersey2ReplicationClient extends AbstractJersey2EurekaHttpClient im
 
     @Override
     protected void addExtraHeaders(Builder webResource) {
+        //这里一定会把isReplication设置为true才行，防止再次同步
         webResource.header(PeerEurekaNode.HEADER_REPLICATION, "true");
     }
 
